@@ -4,6 +4,31 @@ Post-training [SmolVLA](https://huggingface.co/lerobot/smolvla_base) into a **la
 
 The pipeline takes the car's raw driving recordings (ROS 2 bags + front camera video), converts them into a [LeRobot](https://github.com/huggingface/lerobot) dataset, and fine-tunes SmolVLA (450M) to map camera frames to steering and speed. The trained policy is meant to run on the car's Jetson.
 
+## Quick start (training)
+
+The converted dataset is already on Hugging Face, so you can go straight to training. You don't need the raw data or `convert_runs.py`.
+
+1. **Get access.** Send Jake your GitHub and Hugging Face usernames, then accept both invites:
+   - GitHub: this repo (`jakeli00/smolVLA-training`)
+   - Hugging Face: the [`ditect-lab`](https://huggingface.co/ditect-lab) org, which holds the private datasets
+2. **Make a Hugging Face token** with read access at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
+3. **Clone, install, and log in:**
+   ```bash
+   git clone --recurse-submodules https://github.com/jakeli00/smolVLA-training.git
+   cd smolVLA-training/lerobot
+   uv venv --python 3.12
+   uv pip install -e ".[core_scripts,training,smolvla]"
+   cd ..
+   lerobot/.venv/bin/hf auth login      # paste your token
+   ```
+4. **Train.** Run the command under [Fine-tune SmolVLA](#2-fine-tune-smolvla). It downloads [`ditect-lab/ditect_aoe_lane`](https://huggingface.co/datasets/ditect-lab/ditect_aoe_lane) (2.8 GB) automatically on the first run.
+
+To check that you can reach the dataset before training:
+```bash
+lerobot/.venv/bin/python -c "from lerobot.datasets.lerobot_dataset import LeRobotDataset; d=LeRobotDataset('ditect-lab/ditect_aoe_lane'); print(d.meta.total_episodes, 'episodes,', d.meta.total_frames, 'frames')"
+```
+It should print `102 episodes, 148371 frames`.
+
 ## Status
 
 | Step | Status |
@@ -20,7 +45,7 @@ The pipeline takes the car's raw driving recordings (ROS 2 bags + front camera v
 ├── convert_runs.py        # raw ROS 2 runs -> LeRobot dataset
 ├── conversion_guide.pdf   # write-up of the conversion (labeling sections are outdated)
 ├── lerobot/               # LeRobot, as a git submodule pinned to the version we use
-└── data/                  # not in git, see "Data" below
+└── data/                  # not in git, download from Hugging Face (see "Data")
     ├── raw/               # one folder per run (E1-1022-01 ... E1-1022-40)
     └── lerobot/aoe_lane/  # converted dataset written by convert_runs.py
 ```
@@ -29,32 +54,83 @@ The pipeline takes the car's raw driving recordings (ROS 2 bags + front camera v
 
 - Python 3.12 and [uv](https://docs.astral.sh/uv/)
 - ffmpeg (for video encoding and decoding)
-- A Hugging Face account, needed only to push or pull datasets and models
+- A Hugging Face account with access to the `ditect-lab` org (see [Data](#data))
 - A CUDA GPU for training. Apple Silicon (MPS) works for testing but is slow.
+- About 10 GB of free disk to rebuild the dataset (4.3 GB raw + 2.8 GB output + temporary frames)
+
+### Tested environment
+
+The dataset on the Hub was built with exactly this setup:
+
+| | Version |
+|---|---|
+| Machine | MacBook, Apple A18 Pro, macOS 26.6 |
+| Python | 3.12.15 (uv 0.12) |
+| LeRobot | 0.6.2, submodule commit `3f797de` |
+| PyTorch | 2.11.0 |
+| rosbags | 0.11.9 |
+| PyAV | 15.1.0 |
+| OpenCV | 4.13.0 (`opencv-python-headless`, installed by LeRobot) |
+| pandas / numpy | 2.3.3 / 2.2.6 |
+| huggingface_hub | 1.33.0 |
+| ffmpeg | 9.0.2 (Homebrew) |
 
 ## Setup
 
 ```bash
-# 1. Clone with the LeRobot submodule
+# 1. Clone with the LeRobot submodule (pinned to the commit above)
 git clone --recurse-submodules https://github.com/jakeli00/smolVLA-training.git
 cd smolVLA-training
 
 # 2. Create the environment inside lerobot/ and install LeRobot with SmolVLA
 cd lerobot
 uv venv --python 3.12
-uv pip install -e ".[smolvla,training]"
-uv pip install rosbags opencv-python
+uv pip install -e ".[core_scripts,training,smolvla]"
+uv pip install rosbags          # ROS 2 bag reader, only needed for convert_runs.py
 cd ..
 
-# 3. (Optional) Log in to Hugging Face to push or pull datasets
+# 3. Log in to Hugging Face (needed to download the private datasets)
 lerobot/.venv/bin/hf auth login
 ```
 
-If you already cloned without `--recurse-submodules`, run `git submodule update --init`.
+- If you already cloned without `--recurse-submodules`, run `git submodule update --init`.
+- On macOS, install ffmpeg with `brew install ffmpeg`.
+- Every command in this README runs from the repo root and uses the venv's Python directly (`lerobot/.venv/bin/...`), so you never need to activate it.
 
 ## Data
 
-The data is too large for git and is shared separately by the lab. Put it here:
+The data is too large for git, so it lives in two **private** dataset repos in the [ditect-lab](https://huggingface.co/ditect-lab) Hugging Face org:
+
+| Repo | Size | Contents | Needed for |
+|---|---|---|---|
+| [`ditect-lab/ditect_aoe_lane`](https://huggingface.co/datasets/ditect-lab/ditect_aoe_lane) | 2.8 GB | converted LeRobot dataset | training |
+| [`ditect-lab/ditect_aoe_raw`](https://huggingface.co/datasets/ditect-lab/ditect_aoe_raw) | 4.3 GB | raw runs (video + ROS 2 bags) | re-running `convert_runs.py` |
+
+### Getting access
+
+1. Create a free account at [huggingface.co](https://huggingface.co/join) and send your username to Jake. He'll add you to the `ditect-lab` org.
+2. Accept the invite at [huggingface.co/ditect-lab](https://huggingface.co/ditect-lab).
+3. Create an access token (read access is enough) at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) and log in on your machine:
+
+```bash
+lerobot/.venv/bin/hf auth login
+```
+
+### Downloading
+
+For training you don't need to download anything by hand. `lerobot-train --dataset.repo_id=ditect-lab/ditect_aoe_lane` fetches the dataset automatically and caches it in `~/.cache/huggingface/lerobot/`.
+
+To get local copies instead:
+
+```bash
+# Converted dataset -> data/lerobot/aoe_lane
+lerobot/.venv/bin/hf download ditect-lab/ditect_aoe_lane --repo-type dataset --local-dir data/lerobot/aoe_lane
+
+# Raw runs -> data/raw (only needed to re-run the conversion)
+lerobot/.venv/bin/hf download ditect-lab/ditect_aoe_raw --repo-type dataset --local-dir data/raw
+```
+
+### Raw run format
 
 ```
 data/raw/E1-1022-01/
@@ -68,15 +144,48 @@ Runs 08 and 16 have empty bags and run 12 has no video frames. The script skips 
 
 ## Usage
 
-### 1. Convert the raw runs
+### 1. Rebuild the dataset from the raw runs
 
-First, edit the two paths at the top of `convert_runs.py` (`raw` and `out`) to point at your copy of `data/`. Then run:
+Skip this if you only want to train, since the converted dataset is already on the Hub. These steps reproduce `ditect-lab/ditect_aoe_lane` from scratch.
+
+**a. Download the raw runs** (4.3 GB) into `data/raw`:
 
 ```bash
-lerobot/.venv/bin/python convert_runs.py
+lerobot/.venv/bin/hf download ditect-lab/ditect_aoe_raw --repo-type dataset --local-dir data/raw
 ```
 
-This takes about 2 hours, almost all of it AV1 video encoding. The script refuses to run if the output folder already exists, so delete it first to rebuild.
+You should end up with 40 folders, `data/raw/E1-1022-01` through `data/raw/E1-1022-40`.
+
+**b. Point the script at your copy.** The two paths at the top of `convert_runs.py` are absolute paths on Jake's machine. Change them to your repo location:
+
+```python
+raw = Path("/path/to/smolVLA-training/data/raw")
+out = Path("/path/to/smolVLA-training/data/lerobot/aoe_lane")
+```
+
+**c. Run the conversion:**
+
+```bash
+lerobot/.venv/bin/python -u convert_runs.py | tee data/convert_log.txt
+```
+
+This takes about 2 hours on the machine above, almost all of it AV1 video encoding. It prints one line per run, for example `E1-1022-01: 4 episodes, 4321 of 5270 frames kept`, and finishes with:
+
+```
+Done: 102 episodes, 148371 frames in .../data/lerobot/aoe_lane
+```
+
+The script refuses to run if `out` already exists, so delete that folder before rebuilding.
+
+**d. Check the result:**
+
+```bash
+lerobot/.venv/bin/python -c "from lerobot.datasets.lerobot_dataset import LeRobotDataset; \
+d=LeRobotDataset('ditect-lab/ditect_aoe_lane', root='data/lerobot/aoe_lane'); \
+print(d.meta.total_episodes, d.meta.total_frames); s=d[0]; print(s['task'], s['observation.images.front'].shape, s['action'])"
+```
+
+This should print `102 148371`, then `follow the lane torch.Size([3, 480, 640])` and a 2-value action.
 
 What the script does for each run:
 
@@ -91,22 +200,23 @@ What the script does for each run:
 | `action` | 2 | steering (rad), speed (m/s) |
 | `task` | text | `"follow the lane"` (same for every frame) |
 
-### 2. (Optional) Share the dataset on the Hub
+The episode rules are the constants at the top of the script (`MIN_SPEED`, `MAX_GAP_S`, `MIN_EPISODE_S`). Changing them gives a different episode count.
+
+**e. (Optional) Publish a rebuilt dataset to the org.** This replaces the files on the Hub, so check with Jake first:
 
 ```bash
 lerobot/.venv/bin/python -c "from lerobot.datasets.lerobot_dataset import LeRobotDataset; \
-LeRobotDataset('jakeli00/ditect_aoe_lane', root='data/lerobot/aoe_lane').push_to_hub(private=True)"
+LeRobotDataset('ditect-lab/ditect_aoe_lane', root='data/lerobot/aoe_lane').push_to_hub(private=True, license=None)"
 ```
 
-### 3. Fine-tune SmolVLA
+### 2. Fine-tune SmolVLA
 
 This is a starting command based on the [LeRobot SmolVLA guide](https://huggingface.co/docs/lerobot/smolvla). Tune the batch size and steps for your GPU.
 
 ```bash
 lerobot/.venv/bin/lerobot-train \
   --policy.path=lerobot/smolvla_base \
-  --dataset.repo_id=jakeli00/ditect_aoe_lane \
-  --dataset.root=data/lerobot/aoe_lane \
+  --dataset.repo_id=ditect-lab/ditect_aoe_lane \
   --rename_map='{"observation.images.front": "observation.images.camera1"}' \
   --batch_size=64 \
   --steps=20000 \
@@ -117,7 +227,7 @@ lerobot/.venv/bin/lerobot-train \
   --trackio.enable=true
 ```
 
-`--rename_map` maps our camera name onto the camera slot SmolVLA was pretrained with. Run `trackio show` to watch the training curves locally.
+`--rename_map` maps our camera name onto the camera slot SmolVLA was pretrained with. To train from a local copy, add `--dataset.root=data/lerobot/aoe_lane`. Run `trackio show` to watch the training curves locally.
 
 ## Notes
 

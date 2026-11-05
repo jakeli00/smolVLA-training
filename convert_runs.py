@@ -63,7 +63,7 @@ dataset = LeRobotDataset.create(
 
 
 for files in sorted(raw.iterdir()):
-	if not files.is_dir():
+	if not files.is_dir() or files.name.startswith("."):
 		continue
 	run_id = files.name
 	frames_file = files / "frames.csv"

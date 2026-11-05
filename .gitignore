@@ -1,8 +1,8 @@
 # Raw recordings and converted datasets (too large for git)
 data/
 
-# LeRobot is its own repo (github.com/huggingface/lerobot), cloned here for the venv
-lerobot/
+# Training checkpoints and logs
+outputs/
 
 .DS_Store
 __pycache__/
